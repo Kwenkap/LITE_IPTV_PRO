@@ -89,7 +89,7 @@ async function decryptClient(cipherText: string): Promise<string> {
 let db: any = null;
 try {
   const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  db = getFirestore(app);
+  db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 } catch (err) {
   console.error("Failed to initialize Firebase client-side:", err);
 }
