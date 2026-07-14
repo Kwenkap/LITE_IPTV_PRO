@@ -57,10 +57,137 @@ export default function IPTVLogin({ onNavigateToAdmin }: IPTVLoginProps) {
     <div className="w-full max-w-6xl px-4" id="iptv-login-container">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
         
-        {/* LEFT COLUMN: Captivating Info & Images / Subscriptions Marketplace Link */}
-        <div className="lg:col-span-7 space-y-6">
+        {/* BLOCK 1: Connection / Login Form - SHOWN FIRST ON MOBILE (order-1) */}
+        <div className="order-1 lg:order-2 lg:col-start-8 lg:col-span-5 lg:row-start-1 lg:row-end-3 w-full max-w-md mx-auto">
           
-          {/* Marketplace CTA Banner */}
+          <motion.div
+            initial={{ opacity: 0, x: 20, y: 0 }}
+            animate={{ 
+              opacity: 1, 
+              x: 0,
+              y: [0, -6, 0]
+            }}
+            transition={{ 
+              opacity: { duration: 0.6 },
+              x: { duration: 0.6 },
+              y: { 
+                duration: 5, 
+                repeat: Infinity, 
+                ease: "easeInOut" 
+              } 
+            }}
+            className="relative bg-slate-900/85 backdrop-blur-xl rounded-2xl border border-slate-800/80 p-8 shadow-2xl overflow-hidden shadow-violet-500/5 hover:border-slate-700/80 transition-colors"
+            id="login-card"
+          >
+            {/* Top glowing accent lines */}
+            <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-violet-500 via-fuchsia-500 to-amber-500" />
+            
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center justify-center p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 mb-4 shadow-inner">
+                <Tv2 className="w-8 h-8 text-violet-400" />
+              </div>
+              <h1 className="text-2xl font-bold tracking-tight text-white mb-2">
+                Connexion POWER IPTV
+              </h1>
+              <p className="text-sm text-slate-400">
+                Entrez vos identifiants pour lancer instantanément vos chaînes en direct
+              </p>
+            </div>
+
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-3 text-rose-400 text-sm"
+                id="login-error-alert"
+              >
+                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+                <div>
+                  <span className="font-semibold block mb-0.5">Erreur d'accès</span>
+                  {error}
+                </div>
+              </motion.div>
+            )}
+
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
+                  Nom d'utilisateur
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                    <User className="w-5 h-5" />
+                  </div>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all text-sm font-mono"
+                    placeholder="votre_username"
+                    required
+                    disabled={isLoading || isRedirecting}
+                    id="login-username-input"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider">
+                    Mot de passe
+                  </label>
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
+                    <Lock className="w-5 h-5" />
+                  </div>
+                  <input
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all text-sm font-mono"
+                    placeholder="••••••••••••"
+                    required
+                    disabled={isLoading || isRedirecting}
+                    id="login-password-input"
+                  />
+                </div>
+              </div>
+
+              <motion.button
+                whileHover={{ scale: isRedirecting ? 1 : 1.01 }}
+                whileTap={{ scale: isRedirecting ? 1 : 0.99 }}
+                type="submit"
+                disabled={isLoading || isRedirecting}
+                className="relative w-full py-3.5 px-4 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-amber-600 hover:from-violet-500 hover:via-fuchsia-500 hover:to-amber-500 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/20 focus:outline-none focus:ring-2 focus:ring-violet-500/50 disabled:opacity-50 transition-all overflow-hidden flex items-center justify-center gap-2 cursor-pointer"
+                id="login-submit-button"
+              >
+                {isRedirecting ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin text-emerald-400" />
+                    <span className="text-emerald-400">Connexion réussie ! Lancement...</span>
+                  </>
+                ) : isLoading ? (
+                  <>
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    <span>Chargement de votre flux...</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-5 h-5 text-white fill-white animate-pulse" />
+                    <span>Lancer mon flux TV</span>
+                  </>
+                )}
+              </motion.button>
+            </form>
+
+          </motion.div>
+
+        </div>
+
+        {/* BLOCK 2: Marketplace Special Offer - SHOWN SECOND ON MOBILE (order-2) */}
+        <div className="order-2 lg:order-1 lg:col-start-1 lg:col-span-7 lg:row-start-1">
+          
           <motion.div 
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -98,7 +225,11 @@ export default function IPTVLogin({ onNavigateToAdmin }: IPTVLoginProps) {
             </div>
           </motion.div>
 
-          {/* Feature Showcase Box with Live Images */}
+        </div>
+
+        {/* BLOCK 3: TV Experience - SHOWN THIRD ON MOBILE (order-3) */}
+        <div className="order-3 lg:order-1 lg:col-start-1 lg:col-span-7 lg:row-start-2">
+          
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -258,134 +389,6 @@ export default function IPTVLogin({ onNavigateToAdmin }: IPTVLoginProps) {
                 <p className="text-[9px] text-slate-500 leading-tight transition-colors group-hover:text-slate-400">SmartTV, Smartphone, Box</p>
               </motion.div>
             </div>
-
-          </motion.div>
-
-        </div>
-
-        {/* RIGHT COLUMN: The Login Form Component */}
-        <div className="lg:col-span-5 w-full max-w-md mx-auto">
-          
-          <motion.div
-            initial={{ opacity: 0, x: 20, y: 0 }}
-            animate={{ 
-              opacity: 1, 
-              x: 0,
-              y: [0, -6, 0]
-            }}
-            transition={{ 
-              opacity: { duration: 0.6 },
-              x: { duration: 0.6 },
-              y: { 
-                duration: 5, 
-                repeat: Infinity, 
-                ease: "easeInOut" 
-              } 
-            }}
-            className="relative bg-slate-900/85 backdrop-blur-xl rounded-2xl border border-slate-800/80 p-8 shadow-2xl overflow-hidden shadow-violet-500/5 hover:border-slate-700/80 transition-colors"
-            id="login-card"
-          >
-            {/* Top glowing accent lines */}
-            <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-violet-500 via-fuchsia-500 to-amber-500" />
-            
-            <div className="text-center mb-8">
-              <div className="inline-flex items-center justify-center p-3 rounded-xl bg-violet-500/10 border border-violet-500/20 text-violet-400 mb-4 shadow-inner">
-                <Tv2 className="w-8 h-8 text-violet-400" />
-              </div>
-              <h1 className="text-2xl font-bold tracking-tight text-white mb-2">
-                Connexion POWER IPTV
-              </h1>
-              <p className="text-sm text-slate-400">
-                Entrez vos identifiants pour lancer instantanément vos chaînes en direct
-              </p>
-            </div>
-
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="mb-6 p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start gap-3 text-rose-400 text-sm"
-                id="login-error-alert"
-              >
-                <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-semibold block mb-0.5">Erreur d'accès</span>
-                  {error}
-                </div>
-              </motion.div>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-5">
-              <div>
-                <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-2">
-                  Nom d'utilisateur
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                    <User className="w-5 h-5" />
-                  </div>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all text-sm font-mono"
-                    placeholder="votre_username"
-                    required
-                    disabled={isLoading || isRedirecting}
-                    id="login-username-input"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider">
-                    Mot de passe
-                  </label>
-                </div>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-500">
-                    <Lock className="w-5 h-5" />
-                  </div>
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 transition-all text-sm font-mono"
-                    placeholder="••••••••••••"
-                    required
-                    disabled={isLoading || isRedirecting}
-                    id="login-password-input"
-                  />
-                </div>
-              </div>
-
-              <motion.button
-                whileHover={{ scale: isRedirecting ? 1 : 1.01 }}
-                whileTap={{ scale: isRedirecting ? 1 : 0.99 }}
-                type="submit"
-                disabled={isLoading || isRedirecting}
-                className="relative w-full py-3.5 px-4 bg-gradient-to-r from-violet-600 via-fuchsia-600 to-amber-600 hover:from-violet-500 hover:via-fuchsia-500 hover:to-amber-500 text-white font-semibold rounded-xl shadow-lg shadow-violet-500/20 focus:outline-none focus:ring-2 focus:ring-violet-500/50 disabled:opacity-50 transition-all overflow-hidden flex items-center justify-center gap-2 cursor-pointer"
-                id="login-submit-button"
-              >
-                {isRedirecting ? (
-                  <>
-                    <RefreshCw className="w-5 h-5 animate-spin text-emerald-400" />
-                    <span className="text-emerald-400">Connexion réussie ! Lancement...</span>
-                  </>
-                ) : isLoading ? (
-                  <>
-                    <RefreshCw className="w-5 h-5 animate-spin" />
-                    <span>Chargement de votre flux...</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-5 h-5 text-white fill-white animate-pulse" />
-                    <span>Lancer mon flux TV</span>
-                  </>
-                )}
-              </motion.button>
-            </form>
 
           </motion.div>
 
