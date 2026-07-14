@@ -4,12 +4,14 @@ import {
   Tv2, Lock, User, AlertTriangle, RefreshCw, Play, 
   ShoppingCart, Sparkles, ArrowRight, ShieldCheck, Compass 
 } from "lucide-react";
+import FAQSection from "./FAQSection";
 
 interface IPTVLoginProps {
   onNavigateToAdmin: () => void;
+  onPlayStream: (url: string) => void;
 }
 
-export default function IPTVLogin({ onNavigateToAdmin }: IPTVLoginProps) {
+export default function IPTVLogin({ onNavigateToAdmin, onPlayStream }: IPTVLoginProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -46,7 +48,11 @@ export default function IPTVLogin({ onNavigateToAdmin }: IPTVLoginProps) {
       }
 
       setIsRedirecting(true);
-      window.location.href = data.url;
+      setTimeout(() => {
+        setIsLoading(false);
+        setIsRedirecting(false);
+        onPlayStream(data.url);
+      }, 1000);
     } catch (err: any) {
       setError(err.message || "Impossible de se connecter au serveur.");
       setIsLoading(false);
@@ -395,6 +401,8 @@ export default function IPTVLogin({ onNavigateToAdmin }: IPTVLoginProps) {
         </div>
 
       </div>
+      
+      <FAQSection />
     </div>
   );
 }

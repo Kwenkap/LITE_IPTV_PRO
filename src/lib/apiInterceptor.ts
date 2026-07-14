@@ -58,31 +58,52 @@ async function encryptClient(text: string): Promise<string> {
   }
 }
 
-// Helper: Decrypt text with AES-256-cbc (matching Node's output exactly)
+// Helper: Decrypt text with AES-256-cbc (matching Node's output exactly), with multiple fallback keys
 async function decryptClient(cipherText: string): Promise<string> {
-  try {
-    const parts = cipherText.split(":");
-    if (parts.length < 2) return "";
-    const ivHex = parts[0];
-    const encryptedHex = parts.slice(1).join(":");
-    
-    // Convert hex to bytes
-    const iv = new Uint8Array(ivHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-    const encrypted = new Uint8Array(encryptedHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
-    
-    const key = await getAESKey(IPTV_ENCRYPTION_KEY);
-    const decrypted = await window.crypto.subtle.decrypt(
-      { name: "AES-CBC", iv },
-      key,
-      encrypted
-    );
-    
-    const dec = new TextDecoder();
-    return dec.decode(decrypted);
-  } catch (err) {
-    console.error("Decryption failed:", err);
-    return "";
+  if (!cipherText) return "";
+
+  // If it does not match our exact hex format (iv:encrypted_text), it is a raw URL.
+  // This avoids bad decrypt errors on legacy or unencrypted inputs.
+  const encryptedFormatRegex = /^[0-9a-fA-F]{32}:[0-9a-fA-F]+$/;
+  if (!encryptedFormatRegex.test(cipherText)) {
+    return cipherText;
   }
+
+  // Try all candidate encryption keys in order of likelihood
+  const candidateKeys = [
+    "iptv-secure-super-secret-key-32-chars!",
+    "VOTRE_CLE_DE_CHIFFREMENT_SECRET_DE_32_CHARS"
+  ];
+
+  for (const key of candidateKeys) {
+    try {
+      const parts = cipherText.split(":");
+      const ivHex = parts[0];
+      const encryptedHex = parts.slice(1).join(":");
+      
+      // Convert hex to bytes
+      const iv = new Uint8Array(ivHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+      const encrypted = new Uint8Array(encryptedHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16)));
+      
+      const cryptoKey = await getAESKey(key);
+      const decrypted = await window.crypto.subtle.decrypt(
+        { name: "AES-CBC", iv },
+        cryptoKey,
+        encrypted
+      );
+      
+      const dec = new TextDecoder();
+      const result = dec.decode(decrypted);
+      if (result) {
+        return result;
+      }
+    } catch (err) {
+      // Quietly fall back to next key
+    }
+  }
+
+  console.error("Client decryption failed for all possible keys.");
+  return "";
 }
 
 // Initialize Firebase client-side
@@ -234,6 +255,33 @@ export async function initApiInterceptor() {
     try {
       // Ensure superusers are seeded
       await seedSuperusersClient();
+
+      // --- ENDPOINT: POST /api/support/ticket ---
+      if (path === "/api/support/ticket" && init?.method === "POST") {
+        const { name, email, message } = body;
+        if (!name || !email || !message) {
+          return jsonResponse({ error: "Tous les champs sont requis" }, 400);
+        }
+
+        const id = "ticket_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+        const newTicket = {
+          id,
+          name: name.trim(),
+          email: email.trim(),
+          message: message.trim(),
+          createdAt: Date.now(),
+          status: "open"
+        };
+
+        const ticketDocRef = doc(db, "support_tickets", id);
+        await setDoc(ticketDocRef, newTicket);
+
+        return jsonResponse({
+          success: true,
+          message: "Ticket créé avec succès !",
+          ticket: newTicket
+        }, 201);
+      }
 
       // --- ENDPOINT: POST /api/stream ---
       if (path === "/api/stream" && init?.method === "POST") {
@@ -482,6 +530,63 @@ export async function initApiInterceptor() {
 
         await deleteDoc(adminDocRef);
         return jsonResponse({ success: true, message: `Administrateur "${targetUsername}" supprimé.` });
+      }
+
+      // --- ENDPOINT: GET /api/admin/tickets ---
+      if (path === "/api/admin/tickets" && init?.method === "GET") {
+        const isAuthorized = await verifyAdminToken(token);
+        if (!isAuthorized) {
+          return jsonResponse({ error: "Clé ou session administrateur invalide" }, 403);
+        }
+
+        const ticketsSnap = await getDocs(collection(db, "support_tickets"));
+        const tickets: any[] = [];
+
+        ticketsSnap.forEach((docSnap) => {
+          tickets.push({
+            id: docSnap.id,
+            ...docSnap.data()
+          });
+        });
+
+        // Sort by createdAt desc
+        tickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        return jsonResponse(tickets);
+      }
+
+      // --- ENDPOINT: POST /api/admin/deleteTicket ---
+      if (path === "/api/admin/deleteTicket" && init?.method === "POST") {
+        const isAuthorized = await verifyAdminToken(token);
+        if (!isAuthorized) {
+          return jsonResponse({ error: "Clé ou session administrateur invalide" }, 403);
+        }
+
+        const { id } = body;
+        if (!id) {
+          return jsonResponse({ error: "ID du ticket requis" }, 400);
+        }
+
+        const ticketRef = doc(db, "support_tickets", id);
+        await deleteDoc(ticketRef);
+        return jsonResponse({ success: true, message: "Ticket supprimé avec succès." });
+      }
+
+      // --- ENDPOINT: POST /api/admin/resolveTicket ---
+      if (path === "/api/admin/resolveTicket" && init?.method === "POST") {
+        const isAuthorized = await verifyAdminToken(token);
+        if (!isAuthorized) {
+          return jsonResponse({ error: "Clé ou session administrateur invalide" }, 403);
+        }
+
+        const { id, status } = body;
+        if (!id || !status) {
+          return jsonResponse({ error: "ID et statut requis" }, 400);
+        }
+
+        const ticketRef = doc(db, "support_tickets", id);
+        await updateDoc(ticketRef, { status });
+        return jsonResponse({ success: true, message: `Statut du ticket mis à jour à "${status}".` });
       }
 
       // Fallback for unhandled API endpoints

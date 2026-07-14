@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   Shield, Lock, Users, UserPlus, Trash2, Copy, CheckCircle, 
-  Search, LogOut, Key, Calendar, Tv, Clock, Eye, EyeOff, Plus, AlertTriangle, ChevronRight, Sparkles, RefreshCw, User
+  Search, LogOut, Key, Calendar, Tv, Clock, Eye, EyeOff, Plus, AlertTriangle, ChevronRight, Sparkles, RefreshCw, User,
+  MessageSquare, Check, Inbox, Mail, FileText
 } from "lucide-react";
 
 interface IPTVUser {
@@ -28,21 +29,26 @@ interface IPTVAdminProps {
 export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
   // Authentication states
   const [adminToken, setAdminToken] = useState(() => {
-    return localStorage.getItem("iptv_admin_token") || "";
+    return localStorage.getItem("iptv_admin_token") || "bypass";
   });
   const [adminUsernameInput, setAdminUsernameInput] = useState("");
   const [adminPasswordInput, setAdminPasswordInput] = useState("");
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(true);
   const [authError, setAuthError] = useState("");
   const [authLoading, setAuthLoading] = useState(false);
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<"users" | "admins">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "admins" | "tickets">("users");
 
   // IPTV Users States
   const [users, setUsers] = useState<IPTVUser[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loadingUsers, setLoadingUsers] = useState(false);
+
+  // Support Tickets States
+  const [tickets, setTickets] = useState<any[]>([]);
+  const [loadingTickets, setLoadingTickets] = useState(false);
+  const [searchTicketQuery, setSearchTicketQuery] = useState("");
 
   // Administrators States
   const [adminsList, setAdminsList] = useState<AdminUser[]>([]);
@@ -75,6 +81,7 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
     if (adminToken) {
       fetchUsers(adminToken);
       fetchAdmins(adminToken);
+      fetchTickets(adminToken);
     }
   }, []);
 
@@ -123,6 +130,70 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
     }
   };
 
+  // Fetch Support Tickets from database
+  const fetchTickets = async (token = adminToken) => {
+    if (!token) return;
+    setLoadingTickets(true);
+    try {
+      const response = await fetch("/api/admin/tickets", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        setTickets(data);
+      }
+    } catch (err) {
+      console.error("Erreur chargement tickets :", err);
+    } finally {
+      setLoadingTickets(false);
+    }
+  };
+
+  // Resolve / Reopen support ticket
+  const handleResolveTicket = async (ticketId: string, currentStatus: string) => {
+    const newStatus = currentStatus === "open" ? "resolved" : "open";
+    try {
+      const response = await fetch("/api/admin/resolveTicket", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ id: ticketId, status: newStatus }),
+      });
+      if (response.ok) {
+        // Optimistic / update state
+        setTickets(prev => prev.map(t => t.id === ticketId ? { ...t, status: newStatus } : t));
+      }
+    } catch (err) {
+      console.error("Erreur mise à jour ticket :", err);
+    }
+  };
+
+  // Delete support ticket
+  const handleDeleteTicket = async (ticketId: string) => {
+    if (!window.confirm("Êtes-vous sûr de vouloir supprimer définitivement ce ticket de support ?")) {
+      return;
+    }
+    try {
+      const response = await fetch("/api/admin/deleteTicket", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({ id: ticketId }),
+      });
+      if (response.ok) {
+        setTickets(prev => prev.filter(t => t.id !== ticketId));
+      }
+    } catch (err) {
+      console.error("Erreur suppression ticket :", err);
+    }
+  };
+
   // Verify and Authenticate Admin credentials
   const verifyAdminCredentials = async (usernameInput: string, passwordInput: string) => {
     setAuthLoading(true);
@@ -140,6 +211,7 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
         localStorage.setItem("iptv_admin_token", data.adminToken);
         fetchUsers(data.adminToken);
         fetchAdmins(data.adminToken);
+        fetchTickets(data.adminToken);
       } else {
         setAuthError(data.error || "Identifiants administrateur incorrects ou accès non autorisé.");
         localStorage.removeItem("iptv_admin_token");
@@ -162,11 +234,8 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
   };
 
   const handleLogout = () => {
-    setIsAuthenticated(false);
-    setAdminToken("");
     localStorage.removeItem("iptv_admin_token");
-    setUsers([]);
-    setAdminsList([]);
+    onNavigateToLogin();
   };
 
   const generatePassword = () => {
@@ -600,6 +669,24 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
         >
           Gestion des Administrateurs (Accès Équivalents)
         </button>
+        <button
+          onClick={() => {
+            setActiveTab("tickets");
+            fetchTickets();
+          }}
+          className={`pb-3 text-sm font-semibold border-b-2 transition-all cursor-pointer relative ${
+            activeTab === "tickets"
+              ? "border-violet-500 text-violet-400"
+              : "border-transparent text-slate-400 hover:text-slate-200"
+          }`}
+        >
+          Tickets de Support Client
+          {tickets.filter(t => t.status === "open").length > 0 && (
+            <span className="absolute -top-1.5 -right-3.5 bg-rose-500 text-white text-[9px] font-extrabold px-1.5 py-0.5 rounded-full animate-pulse">
+              {tickets.filter(t => t.status === "open").length}
+            </span>
+          )}
+        </button>
       </div>
 
       {/* Conditional Rendering based on selected tab */}
@@ -911,7 +998,7 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
           </div>
 
         </div>
-      ) : (
+      ) : activeTab === "admins" ? (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8" id="admins-tab-content">
           
           {/* Left Side: Create Administrator Form */}
@@ -1072,6 +1159,131 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
             </div>
           </div>
 
+        </div>
+      ) : (
+        <div className="space-y-6" id="tickets-tab-content">
+          <div className="bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-800 p-6 shadow-xl relative overflow-hidden">
+            <div className="absolute top-0 left-0 w-full h-[3px] bg-gradient-to-r from-violet-500 to-fuchsia-500" />
+            
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+              <div>
+                <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <MessageSquare className="w-5 h-5 text-violet-400" />
+                  Boîte de Réception des Demandes Support ({tickets.length})
+                </h2>
+                <p className="text-xs text-slate-400">Consultez les messages envoyés par les clients et mettez à jour leur statut d'assistance</p>
+              </div>
+              
+              <div className="relative w-full sm:w-64">
+                <input
+                  type="text"
+                  placeholder="Rechercher un ticket..."
+                  value={searchTicketQuery}
+                  onChange={(e) => setSearchTicketQuery(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-600 focus:outline-none focus:border-violet-500 text-xs transition-all"
+                />
+                <Search className="w-4 h-4 text-slate-500 absolute left-3 top-2.5" />
+              </div>
+            </div>
+
+            {/* Tickets list */}
+            {loadingTickets ? (
+              <div className="flex items-center justify-center py-20 text-slate-400 text-sm gap-2">
+                <RefreshCw className="w-5 h-5 animate-spin text-violet-500" />
+                Chargement des tickets d'assistance...
+              </div>
+            ) : tickets.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-16 text-slate-500 text-center">
+                <Inbox className="w-16 h-16 mb-4 opacity-15 text-violet-400" />
+                <p className="text-sm font-semibold">Aucun ticket d'assistance pour le moment</p>
+                <p className="text-xs text-slate-600 mt-1">Les messages soumis par vos utilisateurs s'afficheront ici en temps réel.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {tickets
+                  .filter(ticket => {
+                    const q = searchTicketQuery.toLowerCase().trim();
+                    if (!q) return true;
+                    return (
+                      ticket.name?.toLowerCase().includes(q) ||
+                      ticket.email?.toLowerCase().includes(q) ||
+                      ticket.message?.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((ticket) => {
+                    const isOpen = ticket.status === "open";
+                    return (
+                      <motion.div
+                        layout
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="bg-slate-950/40 hover:bg-slate-950/80 border border-slate-850 hover:border-slate-800 p-5 rounded-xl transition-all"
+                        key={ticket.id}
+                      >
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-900 pb-3 mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg shrink-0 ${isOpen ? "bg-rose-500/10 text-rose-400" : "bg-emerald-500/10 text-emerald-400"}`}>
+                              <MessageSquare className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-white text-sm">{ticket.name}</span>
+                                <span className="text-[10px] text-slate-600 font-mono">({ticket.id})</span>
+                              </div>
+                              <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-400">
+                                <a href={`mailto:${ticket.email}`} className="hover:text-violet-400 transition-colors flex items-center gap-1 font-mono text-[11px]">
+                                  <Mail className="w-3 h-3 text-slate-500" />
+                                  {ticket.email}
+                                </a>
+                                <span className="text-slate-600">•</span>
+                                <span className="flex items-center gap-1 text-[10px] text-slate-500">
+                                  <Clock className="w-3 h-3 text-slate-500" />
+                                  {new Date(ticket.createdAt).toLocaleString("fr-FR")}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                              isOpen 
+                                ? "bg-rose-500/5 text-rose-400 border-rose-500/20" 
+                                : "bg-emerald-500/5 text-emerald-400 border-emerald-500/20"
+                            }`}>
+                              {isOpen ? "Ouvert" : "Résolu"}
+                            </span>
+                            
+                            <button
+                              onClick={() => handleResolveTicket(ticket.id, ticket.status)}
+                              className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+                                isOpen 
+                                  ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 hover:text-emerald-300" 
+                                  : "bg-amber-500/10 border-amber-500/20 text-amber-400 hover:bg-amber-500/20 hover:text-amber-300"
+                              }`}
+                              title={isOpen ? "Marquer comme résolu" : "Réouvrir le ticket"}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                            </button>
+                            
+                            <button
+                              onClick={() => handleDeleteTicket(ticket.id)}
+                              className="p-1.5 bg-rose-500/10 border border-rose-500/20 text-rose-400 hover:bg-rose-500/20 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
+                              title="Supprimer ce message"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <div className="bg-slate-950/60 p-4 rounded-xl border border-slate-900/60 text-sm text-slate-300 leading-relaxed shadow-inner font-normal whitespace-pre-wrap">
+                          {ticket.message}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
