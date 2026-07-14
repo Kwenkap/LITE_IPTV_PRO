@@ -1,0 +1,6 @@
+{
+  "name": "IPTV Secure",
+  "description": "Plateforme de sécurisation de flux IPTV avec authentification, expiration de comptes, et chiffrement AES-256.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

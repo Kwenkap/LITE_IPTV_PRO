@@ -1,0 +1,6 @@
+{
+  "firestore": {
+    "database": "ai-studio-iptvsecure-557bbb75-14cd-45eb-b63e-ca2bab211260",
+    "rules": "firestore.rules"
+  }
+}
