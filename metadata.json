@@ -1,6 +1,6 @@
 {
-  "name": "IPTV Secure",
-  "description": "Plateforme de sécurisation de flux IPTV avec authentification, expiration de comptes, et chiffrement AES-256.",
+  "name": "POWER IPTV",
+  "description": "Portail de streaming haute fidélité POWER IPTV avec abonnements intelligents et serveurs stables.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

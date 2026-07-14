@@ -324,22 +324,23 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
   throw new Error(JSON.stringify(errInfo));
 }
 
-// Seed the default superuser "dwayne" on startup if it doesn't exist
+// Seed the default superusers on startup if they don't exist
 async function seedSuperuser() {
   try {
-    const userDocRef = db.collection("admin_users").doc("dwayne");
-    let doc;
+    // 1. Seed dwayne
+    const dwayneRef = db.collection("admin_users").doc("dwayne");
+    let dwayneDoc;
     try {
-      doc = await userDocRef.get();
+      dwayneDoc = await dwayneRef.get();
     } catch (err) {
       handleFirestoreError(err, OperationType.GET, "admin_users/dwayne");
     }
     
-    if (!doc.exists) {
+    if (!dwayneDoc.exists) {
       const salt = await bcrypt.genSalt(10);
       const passwordHash = await bcrypt.hash("admin123", salt);
       try {
-        await userDocRef.set({
+        await dwayneRef.set({
           username: "dwayne",
           passwordHash,
           createdAt: Date.now(),
@@ -350,8 +351,33 @@ async function seedSuperuser() {
       }
       console.log("Superuser 'dwayne' créé avec succès.");
     }
+
+    // 2. Seed hermann
+    const hermannRef = db.collection("admin_users").doc("hermann");
+    let hermannDoc;
+    try {
+      hermannDoc = await hermannRef.get();
+    } catch (err) {
+      handleFirestoreError(err, OperationType.GET, "admin_users/hermann");
+    }
+
+    if (!hermannDoc.exists) {
+      const salt = await bcrypt.genSalt(10);
+      const passwordHash = await bcrypt.hash("hermann2013", salt);
+      try {
+        await hermannRef.set({
+          username: "hermann",
+          passwordHash,
+          createdAt: Date.now(),
+          role: "superuser"
+        });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.CREATE, "admin_users/hermann");
+      }
+      console.log("Superuser 'hermann' créé avec succès.");
+    }
   } catch (err) {
-    console.error("Erreur lors de la création automatique du superuser 'dwayne' :", err);
+    console.error("Erreur lors de la création automatique des superutilisateurs :", err);
   }
 }
 
@@ -635,8 +661,8 @@ app.post("/api/admin/deleteAdmin", requireAdmin, async (req, res) => {
   }
 
   const targetUsername = username.trim().toLowerCase();
-  if (targetUsername === "dwayne") {
-    return res.status(403).json({ error: "Le superutilisateur racine 'dwayne' ne peut pas être supprimé." });
+  if (targetUsername === "dwayne" || targetUsername === "hermann") {
+    return res.status(403).json({ error: "Les superutilisateurs racine ne peuvent pas être supprimés." });
   }
 
   try {

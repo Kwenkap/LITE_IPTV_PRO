@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import IPTVLogin from "./components/IPTVLogin";
 import IPTVAdmin from "./components/IPTVAdmin";
-import { Shield, Tv, Sparkles, Server, Github, ExternalLink } from "lucide-react";
+import AnimatedPosterWall from "./components/AnimatedPosterWall";
+import { Shield, Tv, Sparkles, Server } from "lucide-react";
 import { motion } from "motion/react";
 
 export default function App() {
@@ -28,7 +29,10 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col relative overflow-hidden selection:bg-violet-500/30 selection:text-white" id="main-app-container">
-      {/* Decorative Cyberpunk Background Elements */}
+      {/* Immersive Cinematic Scrolling Poster Background for the Home Page */}
+      {!isAdminPage && <AnimatedPosterWall />}
+
+      {/* Decorative Cyberpunk Background Elements (shown on admin page or as fallback) */}
       <div className="absolute inset-0 w-full h-full overflow-hidden pointer-events-none z-0">
         {/* Ambient violet and fuchsia glow nodes */}
         <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] rounded-full bg-violet-600/10 blur-[120px]" />
@@ -69,20 +73,30 @@ export default function App() {
               animate={{ opacity: 1, scale: 1 }}
               className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/60 border border-slate-800 backdrop-blur-md mb-4 text-xs text-slate-400"
             >
-              <Shield className="w-3.5 h-3.5 text-violet-400" />
-              <span className="font-mono text-[10px] tracking-wider uppercase">
-                Chiffrement Actif AES-256
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span className="font-mono text-[10px] tracking-wider uppercase text-amber-400">
+                Qualité UHD & 4K • Serveurs Premium Actifs
               </span>
             </motion.div>
           )}
           
-          <h1 className="text-3xl md:text-4xl font-extrabold tracking-tight font-display bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent flex items-center justify-center gap-3">
+          <motion.h1 
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1, ease: "easeOut" }}
+            className="text-3xl md:text-4xl font-extrabold tracking-tight font-display bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent flex items-center justify-center gap-3"
+          >
             <Tv className="w-8 h-8 text-violet-500 animate-pulse shrink-0" />
-            IPTV SECURE <span className="text-xs font-mono font-medium tracking-normal text-violet-400 border border-violet-500/30 px-2 py-0.5 rounded bg-violet-500/10 self-center">v1.1.0</span>
-          </h1>
-          <p className="text-sm text-slate-500 mt-2 max-w-sm mx-auto">
-            Passerelle de chiffrement AES-256 et d'authentification temporelle intelligente
-          </p>
+            POWER IPTV <span className="text-xs font-mono font-medium tracking-normal text-amber-400 border border-amber-550/30 px-2 py-0.5 rounded bg-amber-500/10 self-center">ULTRA HD</span>
+          </motion.h1>
+          <motion.p 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2, ease: "easeOut" }}
+            className="text-sm text-slate-300 mt-2 max-w-md mx-auto"
+          >
+            Accédez à vos chaînes favorites, sports en direct et VOD en qualité exceptionnelle, sans coupure.
+          </motion.p>
         </div>
 
         {/* Dynamic conditional render based on simulated path */}
@@ -105,7 +119,7 @@ export default function App() {
             <span className="text-emerald-500 font-semibold">ACTIF (HTTPS)</span>
           </div>
           <div>
-            &copy; {new Date().getFullYear()} IPTV Secure • Chiffrement de flux m3u militaire AES-256
+            &copy; {new Date().getFullYear()} POWER IPTV • Service de Streaming Haute Stabilité & Qualité Premium
           </div>
           <div className="flex items-center gap-3">
             <span className="text-slate-700 font-mono text-[10px]">CWD: CLOUD_RUN</span>

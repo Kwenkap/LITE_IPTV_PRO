@@ -407,7 +407,7 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
               Console Administrateur
             </h1>
             <p className="text-sm text-slate-400">
-              Veuillez saisir vos identifiants pour administrer la plateforme IPTV Secure
+              Veuillez saisir vos identifiants pour administrer la plateforme POWER IPTV
             </p>
           </div>
 
@@ -503,9 +503,9 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
           </div>
           <div>
             <h1 className="text-xl font-bold text-white flex items-center gap-2">
-              Console IPTV Secure <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">Connecté</span>
+              Console POWER IPTV <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">Connecté</span>
             </h1>
-            <p className="text-xs text-slate-400">Gérez vos clients, enregistrez de nouveaux administrateurs et protégez vos serveurs</p>
+            <p className="text-xs text-slate-400">Gérez vos clients, enregistrez de nouveaux administrateurs et suivez les abonnements</p>
           </div>
         </div>
         <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -717,8 +717,8 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
                     placeholder="http://huhu.to/get.php?auth=xyz..."
                     required
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">
-                    Ce lien sera immédiatement chiffré en AES-256 et ne sera jamais exposé en clair aux clients.
+                  <p className="text-[10px] text-slate-400 mt-1">
+                    Ce lien sera associe a des parametres de session dynamiques pour securiser l'acces de vos clients.
                   </p>
                 </div>
 
@@ -748,7 +748,7 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
                     Lien d'intégration directe VLC / Player
                   </div>
                   <p className="text-xs text-slate-400">
-                    Donnez ce lien sécurisé à votre client. Il gère l'authentification et l'expiration en redirigeant en arrière-plan vers le vrai serveur.
+                    Donnez ce lien a votre client. Il gere l'abonnement et l'expiration en redirigeant en arriere-plan vers le flux actif.
                   </p>
                   <div className="flex items-center gap-2 bg-slate-950 p-2.5 rounded-xl border border-slate-800">
                     <input
@@ -803,8 +803,8 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
                 ) : filteredUsers.length === 0 ? (
                   <div className="h-full flex flex-col items-center justify-center text-slate-500 py-12 text-center">
                     <Tv className="w-12 h-12 mb-3 opacity-20" />
-                    <p className="text-sm font-medium">Aucun utilisateur trouvé</p>
-                    <p className="text-xs text-slate-600 max-w-xs mt-1">Créez votre premier utilisateur à l'aide du formulaire de gauche pour démarrer la sécurisation.</p>
+                    <p className="text-sm font-medium">Aucun utilisateur trouve</p>
+                    <p className="text-xs text-slate-400 max-w-xs mt-1">Creez votre premier utilisateur a l'aide du formulaire de gauche pour demarrer la gestion d'abonnements.</p>
                   </div>
                 ) : (
                   filteredUsers.map((user) => {
@@ -859,7 +859,7 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
                         <div className="space-y-2 mt-3 pt-3 border-t border-slate-850/60 text-xs">
                           {/* Decrypted Source URL */}
                           <div className="flex flex-col gap-1">
-                            <span className="text-[10px] text-slate-500 uppercase tracking-wide">Flux Réel Chiffré</span>
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wide">Lien Source Réel</span>
                             <div className="flex items-center justify-between gap-2 bg-slate-900/60 p-2 rounded-lg border border-slate-850">
                               <span className="font-mono text-[11px] text-slate-400 truncate max-w-[280px] sm:max-w-[420px]">
                                 {isUrlVisible ? user.decryptedUrl : "••••••••••••••••••••••••••••••••••••••••"}
@@ -886,7 +886,7 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
 
                           {/* Direct Secure Integration Link */}
                           <div className="flex flex-col gap-1">
-                            <span className="text-[10px] text-slate-500 uppercase tracking-wide">Modèle de Lien Sécurisé (VLC/Tivimate)</span>
+                            <span className="text-[10px] text-slate-400 uppercase tracking-wide">Lien d'Accès Client (VLC / Tivimate)</span>
                             <div className="flex items-center justify-between gap-2 bg-slate-900/60 p-2 rounded-lg border border-slate-850">
                               <span className="font-mono text-[11px] text-violet-400 truncate max-w-[280px] sm:max-w-[420px]">
                                 {directLink}
