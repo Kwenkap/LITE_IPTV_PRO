@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion } from "motion/react";
 import { 
   Tv2, Lock, User, AlertTriangle, RefreshCw, Play, 
@@ -8,15 +8,22 @@ import FAQSection from "./FAQSection";
 
 interface IPTVLoginProps {
   onNavigateToAdmin: () => void;
-  onPlayStream: (url: string) => void;
+  onPlayStream: (url: string, username: string, expiresAt: number) => void;
+  initialError?: string;
 }
 
-export default function IPTVLogin({ onNavigateToAdmin, onPlayStream }: IPTVLoginProps) {
+export default function IPTVLogin({ onNavigateToAdmin, onPlayStream, initialError }: IPTVLoginProps) {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError || "");
+
+  useEffect(() => {
+    if (initialError) {
+      setError(initialError);
+    }
+  }, [initialError]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,7 +58,7 @@ export default function IPTVLogin({ onNavigateToAdmin, onPlayStream }: IPTVLogin
       setTimeout(() => {
         setIsLoading(false);
         setIsRedirecting(false);
-        onPlayStream(data.url);
+        onPlayStream(data.url, data.username, data.expiresAt);
       }, 1000);
     } catch (err: any) {
       setError(err.message || "Impossible de se connecter au serveur.");

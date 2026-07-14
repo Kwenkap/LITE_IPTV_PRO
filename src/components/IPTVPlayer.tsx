@@ -6,10 +6,13 @@ import {
 
 interface IPTVPlayerProps {
   url: string;
+  username: string;
+  expiresAt: number;
   onClose: () => void;
+  onSessionExpired: () => void;
 }
 
-export default function IPTVPlayer({ url, onClose }: IPTVPlayerProps) {
+export default function IPTVPlayer({ url, username, expiresAt, onClose, onSessionExpired }: IPTVPlayerProps) {
   const [isPlaying, setIsPlaying] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isFullScreen, setIsFullScreen] = useState(false);
@@ -18,6 +21,36 @@ export default function IPTVPlayer({ url, onClose }: IPTVPlayerProps) {
   
   const containerRef = useRef<HTMLDivElement>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Periodic background check to immediately disconnect if account expires or gets deleted/expired on the server
+  useEffect(() => {
+    if (!username || !expiresAt) return;
+
+    const checkInterval = setInterval(async () => {
+      // 1. Client-side local time check (immediate, no network required)
+      if (Date.now() > expiresAt) {
+        clearInterval(checkInterval);
+        onSessionExpired();
+        return;
+      }
+
+      // 2. Server-side/DB sync check
+      try {
+        const response = await fetch(`/api/session/check-status?username=${encodeURIComponent(username)}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.status === "expired") {
+            clearInterval(checkInterval);
+            onSessionExpired();
+          }
+        }
+      } catch (err) {
+        console.warn("Erreur d'arrière-plan lors de la vérification de session :", err);
+      }
+    }, 4000); // Highly responsive but quota-friendly check every 4 seconds
+
+    return () => clearInterval(checkInterval);
+  }, [username, expiresAt, onSessionExpired]);
 
   // Update clock every second
   useEffect(() => {

@@ -846,6 +846,33 @@ app.post("/api/admin/resolveTicket", requireAdmin, async (req, res) => {
   }
 });
 
+// Endpoint to check IPTV user session active/expired status in real-time
+app.get("/api/session/check-status", async (req, res) => {
+  const username = req.query.username as string;
+  if (!username) {
+    return res.status(400).json({ error: "Nom d'utilisateur requis" });
+  }
+
+  try {
+    const cleanUsername = username.trim().toLowerCase();
+    const userDoc = await db.collection("iptv_users").doc(cleanUsername).get();
+    if (!userDoc.exists) {
+      return res.json({ status: "expired", reason: "deleted" });
+    }
+
+    const userData = userDoc.data() as Omit<IPTVUser, "id">;
+    const now = Date.now();
+    if (userData.expiresAt < now || userData.status === "expired") {
+      return res.json({ status: "expired", reason: "time_expired" });
+    }
+
+    return res.json({ status: "active", expiresAt: userData.expiresAt });
+  } catch (err) {
+    console.error("Error checking session status:", err);
+    return res.status(500).json({ error: "Erreur lors de la vérification de session" });
+  }
+});
+
 // Stream Access / Login Portal Router
 app.post("/api/stream", async (req, res) => {
   const { username, password } = req.body;
@@ -903,7 +930,9 @@ app.post("/api/stream", async (req, res) => {
 
     res.json({
       success: true,
-      url: decryptedUrl
+      url: decryptedUrl,
+      username: cleanUsername,
+      expiresAt: userData.expiresAt
     });
   } catch (err) {
     console.error("Error in stream authentication:", err);

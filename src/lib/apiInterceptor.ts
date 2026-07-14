@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { 
   getFirestore, 
+  initializeFirestore,
   doc, 
   getDoc, 
   getDocs, 
@@ -11,6 +12,26 @@ import {
 } from "firebase/firestore";
 import bcrypt from "bcryptjs";
 import firebaseConfig from "../../firebase-applet-config.json";
+
+class ClientLocalDB {
+  static get(collectionName: string): any[] {
+    try {
+      const data = localStorage.getItem(`iptv_local_db_${collectionName}`);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      console.error("Local storage get failed:", e);
+      return [];
+    }
+  }
+
+  static set(collectionName: string, items: any[]): void {
+    try {
+      localStorage.setItem(`iptv_local_db_${collectionName}`, JSON.stringify(items));
+    } catch (e) {
+      console.error("Local storage set failed:", e);
+    }
+  }
+}
 
 const IPTV_ENCRYPTION_KEY = "iptv-secure-super-secret-key-32-chars!";
 
@@ -110,7 +131,11 @@ async function decryptClient(cipherText: string): Promise<string> {
 let db: any = null;
 try {
   const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-  db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+  if (firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== "(default)") {
+    db = initializeFirestore(app, {}, firebaseConfig.firestoreDatabaseId);
+  } else {
+    db = getFirestore(app);
+  }
 } catch (err) {
   console.error("Failed to initialize Firebase client-side:", err);
 }
@@ -122,6 +147,39 @@ async function verifyAdminToken(token: string): Promise<boolean> {
 
 // Seed hermann & dwayne if they don't exist in Firestore
 async function seedSuperusersClient() {
+  // Always ensure they exist in localStorage first
+  try {
+    const localAdmins = ClientLocalDB.get("admin_users");
+    let changed = false;
+
+    if (!localAdmins.some(a => a.username === "dwayne")) {
+      localAdmins.push({
+        username: "dwayne",
+        passwordHash: bcrypt.hashSync("admin123", 10),
+        createdAt: Date.now(),
+        role: "superuser"
+      });
+      changed = true;
+    }
+
+    if (!localAdmins.some(a => a.username === "hermann")) {
+      localAdmins.push({
+        username: "hermann",
+        passwordHash: bcrypt.hashSync("hermann2013", 10),
+        createdAt: Date.now(),
+        role: "superuser"
+      });
+      changed = true;
+    }
+
+    if (changed) {
+      ClientLocalDB.set("admin_users", localAdmins);
+      console.log("Seeded superusers in client localStorage.");
+    }
+  } catch (err) {
+    console.warn("Client localStorage seeding failed:", err);
+  }
+
   if (!db) return;
   try {
     const dwayneRef = doc(db, "admin_users", "dwayne");
@@ -262,6 +320,60 @@ export async function initApiInterceptor() {
         }, 201);
       }
 
+      // --- ENDPOINT: GET /api/session/check-status ---
+      if (path.startsWith("/api/session/check-status") && init?.method === "GET") {
+        let username = "";
+        try {
+          const urlObj = new URL(urlString, window.location.origin);
+          username = urlObj.searchParams.get("username") || "";
+        } catch (e) {
+          // Fallback parsing query parameter manually
+          const match = urlString.match(/[?&]username=([^&]+)/);
+          username = match ? decodeURIComponent(match[1]) : "";
+        }
+
+        if (!username) {
+          return jsonResponse({ error: "Nom d'utilisateur requis" }, 400);
+        }
+
+        const cleanUsername = username.trim().toLowerCase();
+        let isUserFound = false;
+        let userData: any = null;
+
+        if (db) {
+          try {
+            const userDocRef = doc(db, "iptv_users", cleanUsername);
+            const userSnap = await getDoc(userDocRef);
+            if (userSnap.exists()) {
+              userData = userSnap.data();
+              isUserFound = true;
+            }
+          } catch (err) {
+            console.warn("Firestore user check failed:", err);
+          }
+        }
+
+        if (!isUserFound) {
+          const localUsers = ClientLocalDB.get("iptv_users");
+          const matched = localUsers.find(u => u.username === cleanUsername);
+          if (matched) {
+            userData = matched;
+            isUserFound = true;
+          }
+        }
+
+        if (!isUserFound || !userData) {
+          return jsonResponse({ status: "expired", reason: "deleted" });
+        }
+
+        const now = Date.now();
+        if (userData.expiresAt < now || userData.status === "expired") {
+          return jsonResponse({ status: "expired", reason: "time_expired" });
+        }
+
+        return jsonResponse({ status: "active", expiresAt: userData.expiresAt });
+      }
+
       // --- ENDPOINT: POST /api/stream ---
       if (path === "/api/stream" && init?.method === "POST") {
         const { username, password } = body;
@@ -272,11 +384,33 @@ export async function initApiInterceptor() {
         const cleanUsername = username.trim().toLowerCase();
 
         // 1. Check if admin
-        const adminDocRef = doc(db, "admin_users", cleanUsername);
-        const adminSnap = await getDoc(adminDocRef);
-        if (adminSnap.exists()) {
-          const adminData = adminSnap.data();
-          if (adminData && bcrypt.compareSync(password, adminData.passwordHash)) {
+        let isAdminFound = false;
+        let adminData: any = null;
+
+        if (db) {
+          try {
+            const adminDocRef = doc(db, "admin_users", cleanUsername);
+            const adminSnap = await getDoc(adminDocRef);
+            if (adminSnap.exists()) {
+              adminData = adminSnap.data();
+              isAdminFound = true;
+            }
+          } catch (err) {
+            console.warn("Firestore admin check failed, falling back to localStorage:", err);
+          }
+        }
+
+        if (!isAdminFound) {
+          const localAdmins = ClientLocalDB.get("admin_users");
+          const matched = localAdmins.find(a => a.username === cleanUsername);
+          if (matched) {
+            adminData = matched;
+            isAdminFound = true;
+          }
+        }
+
+        if (isAdminFound && adminData) {
+          if (bcrypt.compareSync(password, adminData.passwordHash)) {
             const adminToken = `${cleanUsername}:${password}`;
             return jsonResponse({
               success: true,
@@ -289,14 +423,32 @@ export async function initApiInterceptor() {
         }
 
         // 2. Check if IPTV User
-        const userDocRef = doc(db, "iptv_users", cleanUsername);
-        const userSnap = await getDoc(userDocRef);
-        if (!userSnap.exists()) {
-          return jsonResponse({ error: "Identifiants incorrects" }, 401);
+        let isUserFound = false;
+        let userData: any = null;
+
+        if (db) {
+          try {
+            const userDocRef = doc(db, "iptv_users", cleanUsername);
+            const userSnap = await getDoc(userDocRef);
+            if (userSnap.exists()) {
+              userData = userSnap.data();
+              isUserFound = true;
+            }
+          } catch (err) {
+            console.warn("Firestore user check failed, falling back to localStorage:", err);
+          }
         }
 
-        const userData = userSnap.data();
-        if (!userData) {
+        if (!isUserFound) {
+          const localUsers = ClientLocalDB.get("iptv_users");
+          const matched = localUsers.find(u => u.username === cleanUsername);
+          if (matched) {
+            userData = matched;
+            isUserFound = true;
+          }
+        }
+
+        if (!isUserFound || !userData) {
           return jsonResponse({ error: "Identifiants incorrects" }, 401);
         }
 
@@ -315,7 +467,9 @@ export async function initApiInterceptor() {
 
         return jsonResponse({
           success: true,
-          url: decryptedUrl
+          url: decryptedUrl,
+          username: cleanUsername,
+          expiresAt: userData.expiresAt
         });
       }
 
@@ -326,26 +480,50 @@ export async function initApiInterceptor() {
           return jsonResponse({ error: "Clé ou session administrateur invalide" }, 403);
         }
 
-        const usersSnap = await getDocs(collection(db, "iptv_users"));
-        const users: any[] = [];
+        let users: any[] = [];
         const now = Date.now();
+        let fetchedFromFirestore = false;
 
-        for (const docSnap of usersSnap.docs) {
-          const data = docSnap.data();
-          const expectedStatus = data.expiresAt > now ? "active" : "expired";
+        if (db) {
+          try {
+            const usersSnap = await getDocs(collection(db, "iptv_users"));
+            for (const docSnap of usersSnap.docs) {
+              const data = docSnap.data();
+              const expectedStatus = data.expiresAt > now ? "active" : "expired";
 
-          if (data.status !== expectedStatus) {
-            await updateDoc(doc(db, "iptv_users", docSnap.id), { status: expectedStatus });
+              if (data.status !== expectedStatus) {
+                await updateDoc(doc(db, "iptv_users", docSnap.id), { status: expectedStatus });
+              }
+
+              const decryptedUrl = await decryptClient(data.encryptedUrl);
+
+              users.push({
+                id: docSnap.id,
+                ...data,
+                status: expectedStatus,
+                decryptedUrl
+              });
+            }
+            // Save to localStorage as backup/sync
+            ClientLocalDB.set("iptv_users", users);
+            fetchedFromFirestore = true;
+          } catch (err) {
+            console.warn("Firestore fetch users failed, falling back to localStorage:", err);
           }
+        }
 
-          const decryptedUrl = await decryptClient(data.encryptedUrl);
-
-          users.push({
-            id: docSnap.id,
-            ...data,
-            status: expectedStatus,
-            decryptedUrl
-          });
+        if (!fetchedFromFirestore) {
+          const localUsers = ClientLocalDB.get("iptv_users");
+          users = [];
+          for (const u of localUsers) {
+            const expectedStatus = u.expiresAt > now ? "active" : "expired";
+            const decryptedUrl = await decryptClient(u.encryptedUrl);
+            users.push({
+              ...u,
+              status: expectedStatus,
+              decryptedUrl
+            });
+          }
         }
 
         return jsonResponse(users);
@@ -358,17 +536,36 @@ export async function initApiInterceptor() {
           return jsonResponse({ error: "Clé ou session administrateur invalide" }, 403);
         }
 
-        const adminsSnap = await getDocs(collection(db, "admin_users"));
-        const admins: any[] = [];
+        let admins: any[] = [];
+        let fetchedFromFirestore = false;
 
-        adminsSnap.forEach((docSnap) => {
-          const data = docSnap.data();
-          admins.push({
-            username: docSnap.id,
-            createdAt: data.createdAt,
-            role: data.role || "admin"
-          });
-        });
+        if (db) {
+          try {
+            const adminsSnap = await getDocs(collection(db, "admin_users"));
+            adminsSnap.forEach((docSnap) => {
+              const data = docSnap.data();
+              admins.push({
+                username: docSnap.id,
+                createdAt: data.createdAt,
+                role: data.role || "admin"
+              });
+            });
+            // Save to localStorage as backup/sync
+            ClientLocalDB.set("admin_users_list_cache", admins);
+            fetchedFromFirestore = true;
+          } catch (err) {
+            console.warn("Firestore fetch admins failed, falling back to localStorage:", err);
+          }
+        }
+
+        if (!fetchedFromFirestore) {
+          const fullAdmins = ClientLocalDB.get("admin_users");
+          admins = fullAdmins.map(a => ({
+            username: a.username,
+            createdAt: a.createdAt,
+            role: a.role || "admin"
+          }));
+        }
 
         return jsonResponse(admins);
       }
@@ -386,19 +583,13 @@ export async function initApiInterceptor() {
         }
 
         const cleanUsername = username.trim().toLowerCase();
-
-        const userDocRef = doc(db, "iptv_users", cleanUsername);
-        const userSnap = await getDoc(userDocRef);
-        if (userSnap.exists()) {
-          return jsonResponse({ error: `L'utilisateur "${username}" existe déjà` }, 400);
-        }
-
         const passwordHash = bcrypt.hashSync(password, 10);
         const encryptedUrl = await encryptClient(realUrl.trim());
         const now = Date.now();
         const expiresAt = durationDays === 99999 ? now + (99999 * 24 * 60 * 60 * 1000) : now + (durationDays * 24 * 60 * 60 * 1000);
 
         const newUser = {
+          id: cleanUsername,
           username: cleanUsername,
           passwordHash,
           encryptedUrl,
@@ -408,7 +599,31 @@ export async function initApiInterceptor() {
           status: expiresAt > now ? "active" : "expired"
         };
 
-        await setDoc(userDocRef, newUser);
+        // 1. Save to local storage
+        const localUsers = ClientLocalDB.get("iptv_users");
+        if (localUsers.some(u => u.username === cleanUsername)) {
+          return jsonResponse({ error: `L'utilisateur "${username}" existe déjà` }, 400);
+        }
+        localUsers.push(newUser);
+        ClientLocalDB.set("iptv_users", localUsers);
+
+        // 2. Save to Firestore if available
+        if (db) {
+          try {
+            const userDocRef = doc(db, "iptv_users", cleanUsername);
+            await setDoc(userDocRef, {
+              username: cleanUsername,
+              passwordHash,
+              encryptedUrl,
+              createdAt: now,
+              expiresAt,
+              durationDays,
+              status: expiresAt > now ? "active" : "expired"
+            });
+          } catch (err) {
+            console.warn("Firestore save user failed, stored in localStorage only:", err);
+          }
+        }
 
         return jsonResponse({
           success: true,
@@ -437,13 +652,23 @@ export async function initApiInterceptor() {
           return jsonResponse({ error: "ID requis" }, 400);
         }
 
-        const userDocRef = doc(db, "iptv_users", id.toLowerCase());
-        const userSnap = await getDoc(userDocRef);
-        if (!userSnap.exists()) {
-          return jsonResponse({ error: "Utilisateur non trouvé" }, 404);
+        const cleanId = id.toLowerCase();
+
+        // 1. Delete from local storage
+        const localUsers = ClientLocalDB.get("iptv_users");
+        const filteredUsers = localUsers.filter(u => u.username !== cleanId && u.id !== cleanId);
+        ClientLocalDB.set("iptv_users", filteredUsers);
+
+        // 2. Delete from Firestore if available
+        if (db) {
+          try {
+            const userDocRef = doc(db, "iptv_users", cleanId);
+            await deleteDoc(userDocRef);
+          } catch (err) {
+            console.warn("Firestore delete user failed, deleted from localStorage only:", err);
+          }
         }
 
-        await deleteDoc(userDocRef);
         return jsonResponse({ success: true, message: "Utilisateur supprimé" });
       }
 
@@ -460,14 +685,15 @@ export async function initApiInterceptor() {
         }
 
         const oldDocId = id.toLowerCase();
-        const userDocRef = doc(db, "iptv_users", oldDocId);
-        const userSnap = await getDoc(userDocRef);
-        if (!userSnap.exists()) {
+
+        // 1. Update in local storage
+        const localUsers = ClientLocalDB.get("iptv_users");
+        const userIndex = localUsers.findIndex(u => u.username === oldDocId || u.id === oldDocId);
+        if (userIndex === -1) {
           return jsonResponse({ error: "Utilisateur non trouvé" }, 404);
         }
 
-        const userData = userSnap.data();
-        let updatedData = { ...userData };
+        let updatedData = { ...localUsers[userIndex] };
 
         if (password) {
           updatedData.passwordHash = bcrypt.hashSync(password, 10);
@@ -481,17 +707,34 @@ export async function initApiInterceptor() {
 
         if (newUsername && newUsername.toLowerCase() !== oldDocId) {
           const newDocId = newUsername.trim().toLowerCase();
-          const targetDocRef = doc(db, "iptv_users", newDocId);
-          const targetSnap = await getDoc(targetDocRef);
-          if (targetSnap.exists()) {
+          if (localUsers.some(u => u.username === newDocId)) {
             return jsonResponse({ error: `L'utilisateur "${newUsername}" existe déjà` }, 400);
           }
 
           updatedData.username = newDocId;
-          await setDoc(targetDocRef, updatedData);
-          await deleteDoc(userDocRef);
+          updatedData.id = newDocId;
+          localUsers.splice(userIndex, 1);
+          localUsers.push(updatedData);
         } else {
-          await setDoc(userDocRef, updatedData);
+          localUsers[userIndex] = updatedData;
+        }
+        ClientLocalDB.set("iptv_users", localUsers);
+
+        // 2. Update in Firestore if available
+        if (db) {
+          try {
+            const userDocRef = doc(db, "iptv_users", oldDocId);
+            if (newUsername && newUsername.toLowerCase() !== oldDocId) {
+              const newDocId = newUsername.trim().toLowerCase();
+              const targetDocRef = doc(db, "iptv_users", newDocId);
+              await setDoc(targetDocRef, updatedData);
+              await deleteDoc(userDocRef);
+            } else {
+              await setDoc(userDocRef, updatedData);
+            }
+          } catch (err) {
+            console.warn("Firestore edit user failed, updated in localStorage only:", err);
+          }
         }
 
         return jsonResponse({ success: true, message: "Utilisateur mis à jour avec succès" });
@@ -514,19 +757,37 @@ export async function initApiInterceptor() {
           return jsonResponse({ error: "Nom d'utilisateur invalide" }, 400);
         }
 
-        const adminDocRef = doc(db, "admin_users", cleanUsername);
-        const adminSnap = await getDoc(adminDocRef);
-        if (adminSnap.exists()) {
+        // 1. Check if exists in local storage
+        const localAdmins = ClientLocalDB.get("admin_users");
+        if (localAdmins.some(a => a.username === cleanUsername)) {
           return jsonResponse({ error: `L'administrateur "${username}" existe déjà` }, 400);
         }
 
         const passwordHash = bcrypt.hashSync(password, 10);
-        await setDoc(adminDocRef, {
+        const newAdmin = {
           username: cleanUsername,
           passwordHash,
           createdAt: Date.now(),
           role: "admin"
-        });
+        };
+
+        localAdmins.push(newAdmin);
+        ClientLocalDB.set("admin_users", localAdmins);
+
+        // 2. Save in Firestore if available
+        if (db) {
+          try {
+            const adminDocRef = doc(db, "admin_users", cleanUsername);
+            await setDoc(adminDocRef, {
+              username: cleanUsername,
+              passwordHash,
+              createdAt: Date.now(),
+              role: "admin"
+            });
+          } catch (err) {
+            console.warn("Firestore save admin failed, saved in localStorage only:", err);
+          }
+        }
 
         return jsonResponse({
           success: true,
@@ -551,13 +812,21 @@ export async function initApiInterceptor() {
           return jsonResponse({ error: "Les superutilisateurs racine ne peuvent pas être supprimés." }, 403);
         }
 
-        const adminDocRef = doc(db, "admin_users", targetUsername);
-        const adminSnap = await getDoc(adminDocRef);
-        if (!adminSnap.exists()) {
-          return jsonResponse({ error: "Administrateur non trouvé" }, 404);
+        // 1. Delete from local storage
+        const localAdmins = ClientLocalDB.get("admin_users");
+        const filteredAdmins = localAdmins.filter(a => a.username !== targetUsername);
+        ClientLocalDB.set("admin_users", filteredAdmins);
+
+        // 2. Delete from Firestore if available
+        if (db) {
+          try {
+            const adminDocRef = doc(db, "admin_users", targetUsername);
+            await deleteDoc(adminDocRef);
+          } catch (err) {
+            console.warn("Firestore delete admin failed, deleted from localStorage only:", err);
+          }
         }
 
-        await deleteDoc(adminDocRef);
         return jsonResponse({ success: true, message: `Administrateur "${targetUsername}" supprimé.` });
       }
 
@@ -578,14 +847,14 @@ export async function initApiInterceptor() {
           return jsonResponse({ error: "Les identifiants des superutilisateurs racine ne peuvent pas être modifiés directement par souci de sécurité." }, 403);
         }
 
-        const adminDocRef = doc(db, "admin_users", oldUsername);
-        const adminSnap = await getDoc(adminDocRef);
-        if (!adminSnap.exists()) {
+        // 1. Update in local storage
+        const localAdmins = ClientLocalDB.get("admin_users");
+        const adminIndex = localAdmins.findIndex(a => a.username === oldUsername);
+        if (adminIndex === -1) {
           return jsonResponse({ error: "Administrateur non trouvé" }, 404);
         }
 
-        const adminData = adminSnap.data();
-        let updatedData = { ...adminData };
+        let updatedData = { ...localAdmins[adminIndex] };
 
         if (password) {
           updatedData.passwordHash = bcrypt.hashSync(password, 10);
@@ -593,17 +862,33 @@ export async function initApiInterceptor() {
 
         if (newUsername && newUsername.trim().toLowerCase() !== oldUsername) {
           const newDocId = newUsername.trim().toLowerCase().replace(/\s+/g, "");
-          const targetDocRef = doc(db, "admin_users", newDocId);
-          const targetSnap = await getDoc(targetDocRef);
-          if (targetSnap.exists()) {
+          if (localAdmins.some(a => a.username === newDocId)) {
             return jsonResponse({ error: `L'administrateur "${newUsername}" existe déjà` }, 400);
           }
 
           updatedData.username = newDocId;
-          await setDoc(targetDocRef, updatedData);
-          await deleteDoc(adminDocRef);
+          localAdmins.splice(adminIndex, 1);
+          localAdmins.push(updatedData);
         } else {
-          await setDoc(adminDocRef, updatedData);
+          localAdmins[adminIndex] = updatedData;
+        }
+        ClientLocalDB.set("admin_users", localAdmins);
+
+        // 2. Update in Firestore if available
+        if (db) {
+          try {
+            const adminDocRef = doc(db, "admin_users", oldUsername);
+            if (newUsername && newUsername.trim().toLowerCase() !== oldUsername) {
+              const newDocId = newUsername.trim().toLowerCase().replace(/\s+/g, "");
+              const targetDocRef = doc(db, "admin_users", newDocId);
+              await setDoc(targetDocRef, updatedData);
+              await deleteDoc(adminDocRef);
+            } else {
+              await setDoc(adminDocRef, updatedData);
+            }
+          } catch (err) {
+            console.warn("Firestore edit admin failed, updated in localStorage only:", err);
+          }
         }
 
         return jsonResponse({ success: true, message: "Administrateur mis à jour avec succès" });
@@ -616,15 +901,29 @@ export async function initApiInterceptor() {
           return jsonResponse({ error: "Clé ou session administrateur invalide" }, 403);
         }
 
-        const ticketsSnap = await getDocs(collection(db, "support_tickets"));
-        const tickets: any[] = [];
+        let tickets: any[] = [];
+        let fetchedFromFirestore = false;
 
-        ticketsSnap.forEach((docSnap) => {
-          tickets.push({
-            id: docSnap.id,
-            ...docSnap.data()
-          });
-        });
+        if (db) {
+          try {
+            const ticketsSnap = await getDocs(collection(db, "support_tickets"));
+            ticketsSnap.forEach((docSnap) => {
+              tickets.push({
+                id: docSnap.id,
+                ...docSnap.data()
+              });
+            });
+            // Save to local storage as backup/sync
+            ClientLocalDB.set("support_tickets", tickets);
+            fetchedFromFirestore = true;
+          } catch (err) {
+            console.warn("Firestore fetch tickets failed, falling back to localStorage:", err);
+          }
+        }
+
+        if (!fetchedFromFirestore) {
+          tickets = ClientLocalDB.get("support_tickets");
+        }
 
         // Sort by createdAt desc
         tickets.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
@@ -644,8 +943,21 @@ export async function initApiInterceptor() {
           return jsonResponse({ error: "ID du ticket requis" }, 400);
         }
 
-        const ticketRef = doc(db, "support_tickets", id);
-        await deleteDoc(ticketRef);
+        // 1. Delete from local storage
+        const localTickets = ClientLocalDB.get("support_tickets");
+        const filteredTickets = localTickets.filter(t => t.id !== id);
+        ClientLocalDB.set("support_tickets", filteredTickets);
+
+        // 2. Delete from Firestore if available
+        if (db) {
+          try {
+            const ticketRef = doc(db, "support_tickets", id);
+            await deleteDoc(ticketRef);
+          } catch (err) {
+            console.warn("Firestore delete ticket failed, deleted from localStorage only:", err);
+          }
+        }
+
         return jsonResponse({ success: true, message: "Ticket supprimé avec succès." });
       }
 
@@ -661,8 +973,24 @@ export async function initApiInterceptor() {
           return jsonResponse({ error: "ID et statut requis" }, 400);
         }
 
-        const ticketRef = doc(db, "support_tickets", id);
-        await updateDoc(ticketRef, { status });
+        // 1. Update in local storage
+        const localTickets = ClientLocalDB.get("support_tickets");
+        const ticketIndex = localTickets.findIndex(t => t.id === id);
+        if (ticketIndex !== -1) {
+          localTickets[ticketIndex].status = status;
+          ClientLocalDB.set("support_tickets", localTickets);
+        }
+
+        // 2. Update in Firestore if available
+        if (db) {
+          try {
+            const ticketRef = doc(db, "support_tickets", id);
+            await updateDoc(ticketRef, { status });
+          } catch (err) {
+            console.warn("Firestore update ticket failed, updated in localStorage only:", err);
+          }
+        }
+
         return jsonResponse({ success: true, message: `Statut du ticket mis à jour à "${status}".` });
       }
 
