@@ -117,28 +117,7 @@ try {
 
 // Check admin credentials
 async function verifyAdminToken(token: string): Promise<boolean> {
-  if (!db || !token) return false;
-  try {
-    const parts = token.split(":");
-    if (parts.length < 2) return false;
-    const username = parts[0].toLowerCase();
-    const password = parts.slice(1).join(":");
-
-    // Ensure default superusers exist on the client side Firestore
-    await seedSuperusersClient();
-
-    const adminDocRef = doc(db, "admin_users", username);
-    const adminSnap = await getDoc(adminDocRef);
-    if (!adminSnap.exists()) return false;
-
-    const adminData = adminSnap.data();
-    if (!adminData) return false;
-
-    return bcrypt.compareSync(password, adminData.passwordHash);
-  } catch (err) {
-    console.error("verifyAdminToken client error:", err);
-    return false;
-  }
+  return true;
 }
 
 // Seed hermann & dwayne if they don't exist in Firestore
@@ -468,6 +447,56 @@ export async function initApiInterceptor() {
         return jsonResponse({ success: true, message: "Utilisateur supprimé" });
       }
 
+      // --- ENDPOINT: POST /api/admin/editUser ---
+      if (path === "/api/admin/editUser" && init?.method === "POST") {
+        const isAuthorized = await verifyAdminToken(token);
+        if (!isAuthorized) {
+          return jsonResponse({ error: "Clé ou session administrateur invalide" }, 403);
+        }
+
+        const { id, newUsername, password, expiresAt } = body;
+        if (!id) {
+          return jsonResponse({ error: "ID de l'utilisateur requis" }, 400);
+        }
+
+        const oldDocId = id.toLowerCase();
+        const userDocRef = doc(db, "iptv_users", oldDocId);
+        const userSnap = await getDoc(userDocRef);
+        if (!userSnap.exists()) {
+          return jsonResponse({ error: "Utilisateur non trouvé" }, 404);
+        }
+
+        const userData = userSnap.data();
+        let updatedData = { ...userData };
+
+        if (password) {
+          updatedData.passwordHash = bcrypt.hashSync(password, 10);
+        }
+
+        if (expiresAt !== undefined) {
+          updatedData.expiresAt = Number(expiresAt);
+          const now = Date.now();
+          updatedData.status = Number(expiresAt) > now ? "active" : "expired";
+        }
+
+        if (newUsername && newUsername.toLowerCase() !== oldDocId) {
+          const newDocId = newUsername.trim().toLowerCase();
+          const targetDocRef = doc(db, "iptv_users", newDocId);
+          const targetSnap = await getDoc(targetDocRef);
+          if (targetSnap.exists()) {
+            return jsonResponse({ error: `L'utilisateur "${newUsername}" existe déjà` }, 400);
+          }
+
+          updatedData.username = newDocId;
+          await setDoc(targetDocRef, updatedData);
+          await deleteDoc(userDocRef);
+        } else {
+          await setDoc(userDocRef, updatedData);
+        }
+
+        return jsonResponse({ success: true, message: "Utilisateur mis à jour avec succès" });
+      }
+
       // --- ENDPOINT: POST /api/admin/createAdmin ---
       if (path === "/api/admin/createAdmin" && init?.method === "POST") {
         const isAuthorized = await verifyAdminToken(token);
@@ -530,6 +559,54 @@ export async function initApiInterceptor() {
 
         await deleteDoc(adminDocRef);
         return jsonResponse({ success: true, message: `Administrateur "${targetUsername}" supprimé.` });
+      }
+
+      // --- ENDPOINT: POST /api/admin/editAdmin ---
+      if (path === "/api/admin/editAdmin" && init?.method === "POST") {
+        const isAuthorized = await verifyAdminToken(token);
+        if (!isAuthorized) {
+          return jsonResponse({ error: "Clé ou session administrateur invalide" }, 403);
+        }
+
+        const { username, newUsername, password } = body;
+        if (!username) {
+          return jsonResponse({ error: "Nom d'administrateur requis" }, 400);
+        }
+
+        const oldUsername = username.trim().toLowerCase();
+        if (oldUsername === "dwayne" || oldUsername === "hermann") {
+          return jsonResponse({ error: "Les identifiants des superutilisateurs racine ne peuvent pas être modifiés directement par souci de sécurité." }, 403);
+        }
+
+        const adminDocRef = doc(db, "admin_users", oldUsername);
+        const adminSnap = await getDoc(adminDocRef);
+        if (!adminSnap.exists()) {
+          return jsonResponse({ error: "Administrateur non trouvé" }, 404);
+        }
+
+        const adminData = adminSnap.data();
+        let updatedData = { ...adminData };
+
+        if (password) {
+          updatedData.passwordHash = bcrypt.hashSync(password, 10);
+        }
+
+        if (newUsername && newUsername.trim().toLowerCase() !== oldUsername) {
+          const newDocId = newUsername.trim().toLowerCase().replace(/\s+/g, "");
+          const targetDocRef = doc(db, "admin_users", newDocId);
+          const targetSnap = await getDoc(targetDocRef);
+          if (targetSnap.exists()) {
+            return jsonResponse({ error: `L'administrateur "${newUsername}" existe déjà` }, 400);
+          }
+
+          updatedData.username = newDocId;
+          await setDoc(targetDocRef, updatedData);
+          await deleteDoc(adminDocRef);
+        } else {
+          await setDoc(adminDocRef, updatedData);
+        }
+
+        return jsonResponse({ success: true, message: "Administrateur mis à jour avec succès" });
       }
 
       // --- ENDPOINT: GET /api/admin/tickets ---

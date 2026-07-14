@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { 
   Shield, Lock, Users, UserPlus, Trash2, Copy, CheckCircle, 
   Search, LogOut, Key, Calendar, Tv, Clock, Eye, EyeOff, Plus, AlertTriangle, ChevronRight, Sparkles, RefreshCw, User,
-  MessageSquare, Check, Inbox, Mail, FileText
+  MessageSquare, Check, Inbox, Mail, FileText, Pencil
 } from "lucide-react";
 
 interface IPTVUser {
@@ -70,6 +70,20 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
   const [newAdminPassword, setNewAdminPassword] = useState("");
   const [adminFormError, setAdminFormError] = useState("");
   const [adminFormSuccess, setAdminFormSuccess] = useState("");
+
+  // Editing States
+  const [editingUser, setEditingUser] = useState<IPTVUser | null>(null);
+  const [editUserUsername, setEditUserUsername] = useState("");
+  const [editUserPassword, setEditUserPassword] = useState("");
+  const [editUserExpiresAt, setEditUserExpiresAt] = useState(""); // local datetime string
+  const [editUserError, setEditUserError] = useState("");
+  const [editUserSuccess, setEditUserSuccess] = useState("");
+
+  const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null);
+  const [editAdminUsername, setEditAdminUsername] = useState("");
+  const [editAdminPassword, setEditAdminPassword] = useState("");
+  const [editAdminError, setEditAdminError] = useState("");
+  const [editAdminSuccess, setEditAdminSuccess] = useState("");
 
   // UI Helpers
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -414,6 +428,117 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
       }
     } catch (err) {
       console.error("Erreur suppression admin :", err);
+    }
+  };
+
+  // Open edit user modal
+  const openEditUser = (user: IPTVUser) => {
+    setEditingUser(user);
+    setEditUserUsername(user.username);
+    setEditUserPassword("");
+    const date = new Date(user.expiresAt);
+    const tzOffset = date.getTimezoneOffset() * 60000;
+    const localISOTime = new Date(date.getTime() - tzOffset).toISOString().slice(0, 16);
+    setEditUserExpiresAt(localISOTime);
+    setEditUserError("");
+    setEditUserSuccess("");
+  };
+
+  // Submit edit user
+  const handleEditUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    setEditUserError("");
+    setEditUserSuccess("");
+
+    if (!editUserUsername.trim()) {
+      setEditUserError("Nom d'utilisateur requis.");
+      return;
+    }
+
+    const expiresTimestamp = new Date(editUserExpiresAt).getTime();
+    if (isNaN(expiresTimestamp)) {
+      setEditUserError("Date d'expiration invalide.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/admin/editUser", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          id: editingUser.id,
+          newUsername: editUserUsername.trim().toLowerCase(),
+          password: editUserPassword || undefined,
+          expiresAt: expiresTimestamp,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Une erreur s'est produite lors de la modification.");
+      }
+
+      setEditUserSuccess("Utilisateur IPTV modifié avec succès !");
+      setTimeout(() => {
+        setEditingUser(null);
+        fetchUsers();
+      }, 1500);
+    } catch (err: any) {
+      setEditUserError(err.message || "Erreur lors de la modification.");
+    }
+  };
+
+  // Open edit admin modal
+  const openEditAdmin = (admin: AdminUser) => {
+    setEditingAdmin(admin);
+    setEditAdminUsername(admin.username);
+    setEditAdminPassword("");
+    setEditAdminError("");
+    setEditAdminSuccess("");
+  };
+
+  // Submit edit admin
+  const handleEditAdmin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAdmin) return;
+    setEditAdminError("");
+    setEditAdminSuccess("");
+
+    if (!editAdminUsername.trim()) {
+      setEditAdminError("Nom d'administrateur requis.");
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/admin/editAdmin", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${adminToken}`,
+        },
+        body: JSON.stringify({
+          username: editingAdmin.username,
+          newUsername: editAdminUsername.trim().toLowerCase(),
+          password: editAdminPassword || undefined,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || "Une erreur s'est produite lors de la modification.");
+      }
+
+      setEditAdminSuccess("Administrateur modifié avec succès !");
+      setTimeout(() => {
+        setEditingAdmin(null);
+        fetchAdmins();
+      }, 1500);
+    } catch (err: any) {
+      setEditAdminError(err.message || "Erreur lors de la modification.");
     }
   };
 
@@ -933,6 +1058,13 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
                               {user.status === "active" ? "Actif" : "Expiré"}
                             </span>
                             <button
+                              onClick={() => openEditUser(user)}
+                              className="p-1.5 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 rounded-lg transition-colors cursor-pointer"
+                              title="Modifier l'accès"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
                               onClick={() => handleDeleteUser(user.id, user.username)}
                               className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
                               title="Supprimer l'accès"
@@ -1140,15 +1272,24 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
                             </div>
                           </div>
 
-                          {!isRoot && (
+                          <div className="flex items-center gap-1.5 shrink-0">
                             <button
-                              onClick={() => handleDeleteAdmin(adminUser.username)}
-                              className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
-                              title="Révoquer les accès admin"
+                              onClick={() => openEditAdmin(adminUser)}
+                              className="p-1.5 bg-violet-500/10 hover:bg-violet-500/20 text-violet-400 hover:text-violet-300 rounded-lg transition-colors cursor-pointer"
+                              title="Modifier l'administrateur"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Pencil className="w-3.5 h-3.5" />
                             </button>
-                          )}
+                            {!isRoot && (
+                              <button
+                                onClick={() => handleDeleteAdmin(adminUser.username)}
+                                className="p-1.5 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-300 rounded-lg transition-colors cursor-pointer"
+                                title="Révoquer les accès admin"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </motion.div>
                     );
@@ -1286,6 +1427,190 @@ export default function IPTVAdmin({ onNavigateToLogin }: IPTVAdminProps) {
           </div>
         </div>
       )}
+
+      {/* Edit IPTV User Modal */}
+      <AnimatePresence>
+        {editingUser && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative"
+            >
+              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <Pencil className="w-5 h-5 text-violet-400" />
+                Modifier l'accès IPTV
+              </h3>
+
+              {editUserError && (
+                <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{editUserError}</span>
+                </div>
+              )}
+
+              {editUserSuccess && (
+                <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  <span>{editUserSuccess}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleEditUser} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">
+                    Nom d'utilisateur (ID)
+                  </label>
+                  <input
+                    type="text"
+                    value={editUserUsername}
+                    onChange={(e) => setEditUserUsername(e.target.value.toLowerCase().replace(/\s+/g, ""))}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-650 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 text-sm font-mono"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">
+                    Nouveau mot de passe (Laisser vide si inchangé)
+                  </label>
+                  <input
+                    type="password"
+                    value={editUserPassword}
+                    onChange={(e) => setEditUserPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-650 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 text-sm font-mono"
+                    placeholder="Saisissez un nouveau mot de passe"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">
+                    Date et heure d'expiration
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={editUserExpiresAt}
+                    onChange={(e) => setEditUserExpiresAt(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-650 focus:outline-none focus:border-violet-500 focus:ring-1 focus:ring-violet-500 text-sm font-mono"
+                    required
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingUser(null)}
+                    className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 font-medium rounded-xl text-sm transition-colors cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-gradient-to-r from-violet-600 to-fuchsia-600 hover:from-violet-500 hover:to-fuchsia-500 text-white font-medium rounded-xl text-sm transition-all shadow-lg shadow-violet-500/20 cursor-pointer"
+                  >
+                    Enregistrer
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Admin Modal */}
+      <AnimatePresence>
+        {editingAdmin && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md"
+          >
+            <motion.div
+              initial={{ scale: 0.95, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 20 }}
+              className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl relative"
+            >
+              <h3 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-red-400" />
+                Modifier l'administrateur
+              </h3>
+
+              {editAdminError && (
+                <div className="mb-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                  <span>{editAdminError}</span>
+                </div>
+              )}
+
+              {editAdminSuccess && (
+                <div className="mb-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4 shrink-0" />
+                  <span>{editAdminSuccess}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleEditAdmin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">
+                    Nom d'administrateur (ID)
+                  </label>
+                  <input
+                    type="text"
+                    value={editAdminUsername}
+                    onChange={(e) => setEditAdminUsername(e.target.value.toLowerCase().replace(/\s+/g, ""))}
+                    disabled={editingAdmin.username === "dwayne" || editingAdmin.username === "hermann"}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-650 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 text-sm font-mono disabled:opacity-50 disabled:cursor-not-allowed"
+                    required
+                  />
+                  {(editingAdmin.username === "dwayne" || editingAdmin.username === "hermann") && (
+                    <span className="text-[10px] text-amber-500 mt-1 block font-sans">
+                      L'ID des superutilisateurs racine ne peut pas être modifié.
+                    </span>
+                  )}
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1.5 uppercase tracking-wider">
+                    Nouveau mot de passe (Laisser vide si inchangé)
+                  </label>
+                  <input
+                    type="password"
+                    value={editAdminPassword}
+                    onChange={(e) => setEditAdminPassword(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-white placeholder-slate-650 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 text-sm font-mono"
+                    placeholder="Saisissez un nouveau mot de passe"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingAdmin(null)}
+                    className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-750 text-slate-300 font-medium rounded-xl text-sm transition-colors cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 py-2.5 bg-gradient-to-r from-red-600 to-violet-600 hover:from-red-500 hover:to-violet-500 text-white font-medium rounded-xl text-sm transition-all shadow-lg shadow-violet-500/20 cursor-pointer"
+                  >
+                    Enregistrer
+                  </button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
     </div>
   );
 }

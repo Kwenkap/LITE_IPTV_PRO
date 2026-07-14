@@ -604,6 +604,57 @@ app.post("/api/admin/deleteUser", requireAdmin, async (req, res) => {
   }
 });
 
+// Admin: Edit a user
+app.post("/api/admin/editUser", requireAdmin, async (req, res) => {
+  try {
+    const { id, newUsername, password, expiresAt } = req.body;
+    if (!id) {
+      return res.status(400).json({ error: "ID de l'utilisateur requis" });
+    }
+
+    const oldDocId = id.toLowerCase();
+    const userDocRef = db.collection("iptv_users").doc(oldDocId);
+    const userDoc = await userDocRef.get();
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: "Utilisateur non trouvé" });
+    }
+
+    const userData = userDoc.data();
+    let updatedData = { ...userData };
+
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      updatedData.passwordHash = await bcrypt.hash(password, salt);
+    }
+
+    if (expiresAt !== undefined) {
+      updatedData.expiresAt = Number(expiresAt);
+      const now = Date.now();
+      updatedData.status = Number(expiresAt) > now ? "active" : "expired";
+    }
+
+    if (newUsername && newUsername.toLowerCase() !== oldDocId) {
+      const newDocId = newUsername.trim().toLowerCase();
+      const targetDocRef = db.collection("iptv_users").doc(newDocId);
+      const targetDoc = await targetDocRef.get();
+      if (targetDoc.exists) {
+        return res.status(400).json({ error: `L'utilisateur "${newUsername}" existe déjà` });
+      }
+
+      updatedData.username = newDocId;
+      await targetDocRef.set(updatedData);
+      await userDocRef.delete();
+    } else {
+      await userDocRef.set(updatedData);
+    }
+
+    res.json({ success: true, message: "Utilisateur mis à jour avec succès" });
+  } catch (err) {
+    console.error("Error editing user:", err);
+    res.status(500).json({ error: "Erreur serveur lors de la mise à jour de l'utilisateur" });
+  }
+});
+
 // --- NEW ADMIN MANAGEMENT ENDPOINTS ---
 
 // Admin: Get all administrators
@@ -689,6 +740,55 @@ app.post("/api/admin/deleteAdmin", requireAdmin, async (req, res) => {
   } catch (err) {
     console.error("Error deleting admin:", err);
     res.status(500).json({ error: "Erreur lors de la suppression de l'administrateur" });
+  }
+});
+
+// Admin: Edit an administrator
+app.post("/api/admin/editAdmin", requireAdmin, async (req, res) => {
+  try {
+    const { username, newUsername, password } = req.body;
+    if (!username) {
+      return res.status(400).json({ error: "Nom d'administrateur requis" });
+    }
+
+    const oldUsername = username.trim().toLowerCase();
+    if (oldUsername === "dwayne" || oldUsername === "hermann") {
+      return res.status(403).json({ error: "Les identifiants des superutilisateurs racine ne peuvent pas être modifiés directement par souci de sécurité." });
+    }
+
+    const adminRef = db.collection("admin_users").doc(oldUsername);
+    const adminDoc = await adminRef.get();
+    if (!adminDoc.exists) {
+      return res.status(404).json({ error: "Administrateur non trouvé" });
+    }
+
+    const adminData = adminDoc.data();
+    let updatedData = { ...adminData };
+
+    if (password) {
+      const salt = await bcrypt.genSalt(10);
+      updatedData.passwordHash = await bcrypt.hash(password, salt);
+    }
+
+    if (newUsername && newUsername.trim().toLowerCase() !== oldUsername) {
+      const newDocId = newUsername.trim().toLowerCase().replace(/\s+/g, "");
+      const targetDocRef = db.collection("admin_users").doc(newDocId);
+      const targetDoc = await targetDocRef.get();
+      if (targetDoc.exists) {
+        return res.status(400).json({ error: `L'administrateur "${newUsername}" existe déjà` });
+      }
+
+      updatedData.username = newDocId;
+      await targetDocRef.set(updatedData);
+      await adminRef.delete();
+    } else {
+      await adminRef.set(updatedData);
+    }
+
+    res.json({ success: true, message: "Administrateur mis à jour avec succès" });
+  } catch (err) {
+    console.error("Error editing admin:", err);
+    res.status(500).json({ error: "Erreur serveur lors de la mise à jour de l'administrateur" });
   }
 });
 
